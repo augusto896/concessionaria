@@ -312,7 +312,11 @@ try {
 
     if ($method === 'POST' && $id === null && count($parts) === 1) {
         $body = input();
-        $fields = requestBodyFields($body, $config['fields'], $config['required']);
+        $required = $config['required'];
+        if ($resource === 'veiculos') {
+            $required = array_values(array_diff($required, ['marca_id']));
+        }
+        $fields = requestBodyFields($body, $config['fields'], $required);
         if ($resource === 'usuarios') {
             $password = (string)($body['senha'] ?? '');
             if (strlen($password) < 8) {
@@ -329,6 +333,26 @@ try {
         if ($resource === 'clientes' && !preg_match('/^\d{11}$/', (string)$fields['cpf'])) {
             fail(422, 'validation_error', 'O CPF deve conter 11 dígitos.');
         }
+        $createVehicleBrand = false;
+        if ($resource === 'veiculos' && empty($fields['marca_id'])) {
+            $brandName = trim((string)($body['marca_nome'] ?? ''));
+            if ($brandName === '') {
+                fail(422, 'validation_error', 'Informe o nome da marca.');
+            }
+            $createVehicleBrand = true;
+        }
+        if ($createVehicleBrand) {
+            $pdo->beginTransaction();
+            $brandQuery = $pdo->prepare('SELECT id FROM marcas WHERE nome = ?');
+            $brandQuery->execute([$brandName]);
+            $brandId = $brandQuery->fetchColumn();
+            if ($brandId === false) {
+                $insertBrand = $pdo->prepare('INSERT INTO marcas (nome, pais_origem) VALUES (?, ?)');
+                $insertBrand->execute([$brandName, '']);
+                $brandId = $pdo->lastInsertId();
+            }
+            $fields['marca_id'] = (int)$brandId;
+        }
         $columns = array_keys($fields);
         $sql = sprintf(
             'INSERT INTO %s (%s) VALUES (%s)',
@@ -338,7 +362,11 @@ try {
         );
         $insert = $pdo->prepare($sql);
         $insert->execute(array_values($fields));
-        ok(['id' => (int)$pdo->lastInsertId()], 201);
+        $createdId = (int)$pdo->lastInsertId();
+        if ($createVehicleBrand) {
+            $pdo->commit();
+        }
+        ok(['id' => $createdId], 201);
     }
 
     if (in_array($method, ['PUT', 'PATCH'], true) && $id !== null && count($parts) === 2) {

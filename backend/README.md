@@ -78,7 +78,7 @@ Todas as respostas usam `{ "data": ... }` ou `{ "error": { "code": "...", "messa
 | GET | `vendas`, `vendas/{id}` | Autenticado |
 | POST | `vendas` | Autenticado; vendedor autenticado é registrado como responsável |
 
-O `POST /vendas` recebe `cliente_id`, `veiculo_id`, `data_venda` (`YYYY-MM-DD`), `valor_venda` e `forma_pagamento`. Em uma transação, bloqueia o veículo, verifica disponibilidade, grava a venda e marca o veículo como vendido. A chave única em `vendas.veiculo_id` impede uma segunda venda mesmo em requisições concorrentes. Funcionários podem entrar usando o email e a senha; o identificador interno `usuario` é gerado automaticamente ao criá-los pelo app. Exclusões de clientes, marcas, veículos e funcionários referenciados são recusadas pela integridade referencial do MySQL.
+O `POST /veiculos` gera o ID do veículo automaticamente ao salvar. Se não houver marcas cadastradas, o app envia `marca_nome`; a API cria a marca (sem país de origem informado) e o veículo em uma única transação, sem exigir inserção manual no phpMyAdmin. O `POST /vendas` recebe `cliente_id`, `veiculo_id`, `data_venda` (`YYYY-MM-DD`), `valor_venda` e `forma_pagamento`. Em uma transação, bloqueia o veículo, verifica disponibilidade, grava a venda e marca o veículo como vendido. A chave única em `vendas.veiculo_id` impede uma segunda venda mesmo em requisições concorrentes. Funcionários podem entrar usando o email e a senha; o identificador interno `usuario` é gerado automaticamente ao criá-los pelo app. Exclusões de clientes, marcas, veículos e funcionários referenciados são recusadas pela integridade referencial do MySQL.
 
 ## Modelo de dados
 

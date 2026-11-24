@@ -82,7 +82,7 @@ return [
    - `http://192.168.1.20/concessionaria-api/public/api/v1/`
 4. Abra o projeto no Android Studio e execute a variante `debug`.
 
-O dashboard e os módulos consultam a API. Veículos, clientes, marcas e usuários têm listagem, criação, edição e exclusão com confirmação. Vendas são consultáveis e criadas pelo app; a API faz a reserva do veículo e a atualização de situação na mesma transação. As permissões de funcionários são verificadas no servidor, independentemente dos controles visuais do app.
+O dashboard e os módulos consultam a API. Veículos, clientes, marcas e usuários têm listagem, criação, edição e exclusão com confirmação. Cadastre marcas e veículos diretamente pelo app; ao salvar um veículo, o banco gera o ID automaticamente, sem inserção manual no phpMyAdmin. Os dados continuam armazenados no MySQL do WampServer pela API. Vendas são consultáveis e criadas pelo app; a API faz a reserva do veículo e a atualização de situação na mesma transação. As permissões de funcionários são verificadas no servidor, independentemente dos controles visuais do app.
 
 ## Verificação
 

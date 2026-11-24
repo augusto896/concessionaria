@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -145,9 +146,7 @@ private val resourceSpecs = mapOf(
             FormField("ano", "Ano"),
             FormField("cor", "Cor"),
             FormField("quilometragem", "Quilometragem"),
-            FormField("preco", "Preço (R$)"),
-            FormField("descricao", "Descrição", required = false),
-            FormField("imagem_url", "URL da imagem", required = false)
+            FormField("preco", "Preço (R$)")
         )
     ),
     "vendas" to ResourceSpec(
@@ -602,6 +601,7 @@ private fun RecordEditor(
     val values = remember(record?.id) {
         mutableStateMapOf<String, String>().apply {
             spec.fields.forEach { field -> put(field.key, record?.fieldValue(field.key).orEmpty()) }
+            if (resource == "veiculos") put("marca_nome", record?.marca_nome.orEmpty())
         }
     }
     val fields = if (resource == "usuarios") {
@@ -609,7 +609,14 @@ private fun RecordEditor(
     } else spec.fields
     val visibleFields = fields.filter { it.key != "usuario_id" || isAdmin }
     val context = LocalContext.current
-    val missing = visibleFields.any { it.required && values[it.key].isNullOrBlank() }
+    var showValidationErrors by remember(record?.id) { mutableStateOf(false) }
+    val missing = visibleFields.any { field ->
+        val required = field.required
+        val value = if (resource == "veiculos" && field.key == "marca_id") {
+            values["marca_nome"].orEmpty()
+        } else values[field.key].orEmpty()
+        fieldValidationError(field.key, value, required) != null
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -621,61 +628,99 @@ private fun RecordEditor(
             ) {
                 visibleFields.forEach { field ->
                     val choices = choicesFor(field.key, lookups)
-                    if (choices.isNotEmpty()) {
-                        ChoiceField(
-                            label = field.label,
-                            value = values[field.key].orEmpty(),
-                            choices = choices,
-                            onSelect = { values[field.key] = it.toString() }
-                        )
+                    if (resource == "veiculos" && field.key == "marca_id") {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            BrandField(
+                                value = values["marca_nome"].orEmpty(),
+                                choices = choices,
+                                onValueChange = { name, id ->
+                                    values["marca_nome"] = name
+                                    values["marca_id"] = id.orEmpty()
+                                }
+                            )
+                            if (showValidationErrors) {
+                                fieldValidationError(
+                                    "marca_id",
+                                    values["marca_nome"].orEmpty(),
+                                    field.required
+                                )?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                            }
+                        }
+                    } else if (choices.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            ChoiceField(
+                                label = field.label,
+                                value = values[field.key].orEmpty(),
+                                choices = choices,
+                                onSelect = { values[field.key] = it.toString() }
+                            )
+                            if (showValidationErrors) {
+                                fieldValidationError(field.key, values[field.key].orEmpty(), field.required)
+                                    ?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                            }
+                        }
                     } else if (field.key == "data_venda") {
-                        OutlinedButton(
-                            onClick = {
-                                val calendar = Calendar.getInstance()
-                                values[field.key]?.let { value ->
-                                    runCatching {
-                                        SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
-                                            isLenient = false
-                                        }.parse(value)
-                                    }.getOrNull()?.let(calendar::setTime)
-                                }
-                                DatePickerDialog(
-                                    context,
-                                    { _, year, month, day ->
-                                        values[field.key] = String.format(
-                                            Locale.US,
-                                            "%04d-%02d-%02d",
-                                            year,
-                                            month + 1,
-                                            day
-                                        )
-                                    },
-                                    calendar.get(Calendar.YEAR),
-                                    calendar.get(Calendar.MONTH),
-                                    calendar.get(Calendar.DAY_OF_MONTH)
-                                ).show()
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            val formattedDate = runCatching {
-                                SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
-                                    isLenient = false
-                                }.parse(values[field.key].orEmpty())?.let {
-                                    SimpleDateFormat("dd/MM/yyyy", Locale.forLanguageTag("pt-BR")).format(it)
-                                }
-                            }.getOrNull()
-                            Text("${field.label}: ${formattedDate ?: "Selecionar data"}")
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            OutlinedButton(
+                                onClick = {
+                                    val calendar = Calendar.getInstance()
+                                    values[field.key]?.let { value ->
+                                        runCatching {
+                                            SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                                                isLenient = false
+                                            }.parse(value)
+                                        }.getOrNull()?.let(calendar::setTime)
+                                    }
+                                    DatePickerDialog(
+                                        context,
+                                        { _, year, month, day ->
+                                            values[field.key] = String.format(
+                                                Locale.US,
+                                                "%04d-%02d-%02d",
+                                                year,
+                                                month + 1,
+                                                day
+                                            )
+                                        },
+                                        calendar.get(Calendar.YEAR),
+                                        calendar.get(Calendar.MONTH),
+                                        calendar.get(Calendar.DAY_OF_MONTH)
+                                    ).show()
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                val formattedDate = runCatching {
+                                    SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                                        isLenient = false
+                                    }.parse(values[field.key].orEmpty())?.let {
+                                        SimpleDateFormat("dd/MM/yyyy", Locale.forLanguageTag("pt-BR")).format(it)
+                                    }
+                                }.getOrNull()
+                                Text("${field.label}: ${formattedDate ?: "Selecionar data"}")
+                            }
+                            if (showValidationErrors) {
+                                fieldValidationError(field.key, values[field.key].orEmpty(), field.required)
+                                    ?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                            }
                         }
                     } else {
+                        val fieldError = if (showValidationErrors) {
+                            fieldValidationError(field.key, values[field.key].orEmpty(), field.required)
+                        } else null
                         OutlinedTextField(
                             value = values[field.key].orEmpty(),
                             onValueChange = {
-                                values[field.key] = if (field.key in setOf("preco", "valor_venda")) {
-                                    formatCurrencyTyping(it)
-                                } else it
+                                values[field.key] = when (field.key) {
+                                    "preco", "valor_venda" -> formatCurrencyTyping(it)
+                                    "ano", "quilometragem", "cpf" -> it.filter(Char::isDigit)
+                                        .let { digits -> if (field.key == "cpf") digits.take(11) else digits }
+                                    else -> it
+                                }
                             },
                             label = { Text(field.label) },
                             singleLine = field.key != "endereco" && field.key != "descricao",
+                            isError = fieldError != null,
+                            supportingText = fieldError?.let { error -> ({ Text(error) }) },
                             visualTransformation = if (field.key == "senha") PasswordVisualTransformation()
                             else VisualTransformation.None,
                             keyboardOptions = when (field.key) {
@@ -684,6 +729,12 @@ private fun RecordEditor(
                                 )
                                 "ano", "quilometragem", "cpf" -> KeyboardOptions.Default.copy(
                                     keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                                )
+                                "telefone" -> KeyboardOptions.Default.copy(
+                                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone
+                                )
+                                "email" -> KeyboardOptions.Default.copy(
+                                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Email
                                 )
                                 else -> KeyboardOptions.Default
                             },
@@ -698,8 +749,10 @@ private fun RecordEditor(
         },
         confirmButton = {
             Button(
-                onClick = { onSave(values.toRecord(resource)) },
-                enabled = !missing
+                onClick = {
+                    showValidationErrors = true
+                    if (!missing) onSave(values.toRecord(resource))
+                }
             ) { Text("Salvar") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
@@ -724,6 +777,49 @@ private fun ChoiceField(
                 DropdownMenuItem(
                     text = { Text(choice.label) },
                     onClick = { onSelect(choice.value); expanded = false }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BrandField(
+    value: String,
+    choices: List<Choice>,
+    onValueChange: (String, String?) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val matchingChoices = choices.filter {
+        value.isBlank() || it.label.contains(value.trim(), ignoreCase = true)
+    }
+    Box(modifier = Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = { typed ->
+                val match = choices.firstOrNull { it.label.equals(typed.trim(), ignoreCase = true) }
+                onValueChange(typed, match?.value)
+                expanded = true
+            },
+            label = { Text("Marca") },
+            singleLine = true,
+            trailingIcon = {
+                TextButton(onClick = { expanded = !expanded }) { Text("▼") }
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+        DropdownMenu(
+            expanded = expanded && matchingChoices.isNotEmpty(),
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            matchingChoices.forEach { choice ->
+                DropdownMenuItem(
+                    text = { Text(choice.label) },
+                    onClick = {
+                        onValueChange(choice.label, choice.value)
+                        expanded = false
+                    }
                 )
             }
         }
@@ -797,7 +893,8 @@ private fun Map<String, String>.toRecord(resource: String): Record {
         "veiculos" -> Record(
             marca_id = long("marca_id"), modelo = text("modelo"), ano = int("ano"),
             cor = text("cor"), quilometragem = int("quilometragem"), preco = decimal("preco"),
-            descricao = text("descricao"), imagem_url = text("imagem_url")
+            descricao = text("descricao"), imagem_url = text("imagem_url"),
+            marca_nome = text("marca_nome")
         )
         "vendas" -> Record(
             cliente_id = long("cliente_id"), veiculo_id = long("veiculo_id"),
@@ -808,7 +905,26 @@ private fun Map<String, String>.toRecord(resource: String): Record {
     }
 }
 
+private fun fieldValidationError(key: String, value: String, required: Boolean): String? {
+    val trimmed = value.trim()
+    if (trimmed.isEmpty()) return if (required) "Campo obrigatório." else null
+    return when (key) {
+        "marca_id" -> null
+        "ano" -> if (trimmed.toIntOrNull()?.let { it > 0 } == true) null else "Informe um ano válido."
+        "quilometragem" -> if (trimmed.toIntOrNull()?.let { it >= 0 } == true) null
+            else "Informe uma quilometragem válida."
+        "cpf" -> if (trimmed.length == 11) null else "O CPF deve conter 11 números."
+        "preco", "valor_venda" -> if (parseCurrency(trimmed)?.let { it >= 0 } == true) null
+            else "Informe um valor válido."
+        "cliente_id", "veiculo_id", "usuario_id" ->
+            if (trimmed.toLongOrNull()?.let { it > 0 } == true) null else "Selecione uma opção válida."
+        else -> null
+    }
+}
+
 private fun formatCurrencyTyping(input: String): String {
+    if (input.isBlank()) return ""
+    if (input.none(Char::isDigit)) return if (input.any { it == ',' || it == '.' }) "0," else ""
     val lastComma = input.lastIndexOf(',')
     val lastDot = input.lastIndexOf('.')
     val decimalSeparator = when {

@@ -711,7 +711,7 @@ private fun RecordEditor(
                             value = values[field.key].orEmpty(),
                             onValueChange = {
                                 values[field.key] = when (field.key) {
-                                    "preco", "valor_venda" -> formatCurrencyTyping(it)
+                                    "preco", "valor_venda" -> normalizeCurrencyInput(it)
                                     "ano", "quilometragem", "cpf" -> it.filter(Char::isDigit)
                                         .let { digits -> if (field.key == "cpf") digits.take(11) else digits }
                                     else -> it
@@ -922,24 +922,30 @@ private fun fieldValidationError(key: String, value: String, required: Boolean):
     }
 }
 
-private fun formatCurrencyTyping(input: String): String {
-    if (input.isBlank()) return ""
-    if (input.none(Char::isDigit)) return if (input.any { it == ',' || it == '.' }) "0," else ""
-    val lastComma = input.lastIndexOf(',')
-    val lastDot = input.lastIndexOf('.')
-    val decimalSeparator = when {
-        lastComma >= 0 -> lastComma
-        lastDot >= 0 && (input.length - lastDot - 1 <= 2) -> lastDot
-        else -> -1
+internal fun normalizeCurrencyInput(input: String): String {
+    val value = input.replace("R$", "", ignoreCase = true).filterNot(Char::isWhitespace)
+    if (value.isBlank()) return ""
+
+    val commaIndex = value.lastIndexOf(',')
+    val dotIndex = value.lastIndexOf('.')
+    val separatorIndex = maxOf(commaIndex, dotIndex)
+    if (separatorIndex >= 0) {
+        val groups = value.split(',', '.')
+        val isThousandsGrouping = groups.size > 1 &&
+            groups.first().length in 1..3 && groups.first().all(Char::isDigit) &&
+            groups.drop(1).all { it.length == 3 && it.all(Char::isDigit) }
+        val isDecimalSeparator = commaIndex >= 0 && dotIndex >= 0 ||
+            value.length - separatorIndex - 1 in 1..2
+        if (isThousandsGrouping && !isDecimalSeparator) return value.filter(Char::isDigit)
+
+        val integer = value.substring(0, separatorIndex).filter(Char::isDigit)
+        val fraction = value.substring(separatorIndex + 1).filter(Char::isDigit).take(2)
+        return if (fraction.isNotEmpty() || value.endsWith(',') || value.endsWith('.')) {
+            "$integer,$fraction"
+        } else integer
     }
-    val integerPart = (if (decimalSeparator >= 0) input.substring(0, decimalSeparator) else input)
-        .filter(Char::isDigit)
-        .trimStart('0')
-        .ifEmpty { "0" }
-    val groupedInteger = integerPart.reversed().chunked(3).joinToString(".").reversed()
-    if (decimalSeparator < 0) return groupedInteger
-    val fraction = input.substring(decimalSeparator + 1).filter(Char::isDigit).take(2)
-    return "$groupedInteger,$fraction"
+
+    return value.filter(Char::isDigit)
 }
 
 private fun formatCurrencyForInput(value: Double): String =
@@ -948,10 +954,9 @@ private fun formatCurrencyForInput(value: Double): String =
         maximumFractionDigits = 2
     }.format(value)
 
-private fun parseCurrency(value: String?): Double? {
-    val normalized = value?.trim()?.takeIf(String::isNotEmpty)?.let {
-        if (it.contains(',')) it.replace(".", "").replace(',', '.') else it
-    }
+internal fun parseCurrency(value: String?): Double? {
+    val normalized = value?.trim()?.takeIf(String::isNotEmpty)?.let(::normalizeCurrencyInput)
+        ?.replace(",", ".")
     return normalized?.toDoubleOrNull()
 }
 

@@ -1,5 +1,6 @@
 package com.example.concessionaria
 
+import android.app.DatePickerDialog
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -50,6 +51,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -75,6 +77,8 @@ import com.example.concessionaria.viewmodel.AppUiState
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
@@ -604,6 +608,7 @@ private fun RecordEditor(
         spec.fields.map { if (it.key == "senha") it.copy(required = record == null) else it }
     } else spec.fields
     val visibleFields = fields.filter { it.key != "usuario_id" || isAdmin }
+    val context = LocalContext.current
     val missing = visibleFields.any { it.required && values[it.key].isNullOrBlank() }
 
     AlertDialog(
@@ -623,17 +628,65 @@ private fun RecordEditor(
                             choices = choices,
                             onSelect = { values[field.key] = it.toString() }
                         )
+                    } else if (field.key == "data_venda") {
+                        OutlinedButton(
+                            onClick = {
+                                val calendar = Calendar.getInstance()
+                                values[field.key]?.let { value ->
+                                    runCatching {
+                                        SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                                            isLenient = false
+                                        }.parse(value)
+                                    }.getOrNull()?.let(calendar::setTime)
+                                }
+                                DatePickerDialog(
+                                    context,
+                                    { _, year, month, day ->
+                                        values[field.key] = String.format(
+                                            Locale.US,
+                                            "%04d-%02d-%02d",
+                                            year,
+                                            month + 1,
+                                            day
+                                        )
+                                    },
+                                    calendar.get(Calendar.YEAR),
+                                    calendar.get(Calendar.MONTH),
+                                    calendar.get(Calendar.DAY_OF_MONTH)
+                                ).show()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            val formattedDate = runCatching {
+                                SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                                    isLenient = false
+                                }.parse(values[field.key].orEmpty())?.let {
+                                    SimpleDateFormat("dd/MM/yyyy", Locale.forLanguageTag("pt-BR")).format(it)
+                                }
+                            }.getOrNull()
+                            Text("${field.label}: ${formattedDate ?: "Selecionar data"}")
+                        }
                     } else {
                         OutlinedTextField(
                             value = values[field.key].orEmpty(),
-                            onValueChange = { values[field.key] = it },
+                            onValueChange = {
+                                values[field.key] = if (field.key in setOf("preco", "valor_venda")) {
+                                    formatCurrencyTyping(it)
+                                } else it
+                            },
                             label = { Text(field.label) },
                             singleLine = field.key != "endereco" && field.key != "descricao",
                             visualTransformation = if (field.key == "senha") PasswordVisualTransformation()
                             else VisualTransformation.None,
-                            keyboardOptions = if (field.key in setOf("ano", "quilometragem", "preco", "valor_venda", "cpf")) {
-                                KeyboardOptions.Default.copy(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
-                            } else KeyboardOptions.Default,
+                            keyboardOptions = when (field.key) {
+                                "preco", "valor_venda" -> KeyboardOptions.Default.copy(
+                                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal
+                                )
+                                "ano", "quilometragem", "cpf" -> KeyboardOptions.Default.copy(
+                                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                                )
+                                else -> KeyboardOptions.Default
+                            },
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -714,14 +767,14 @@ private fun Record.fieldValue(key: String): String? = when (key) {
     "ano" -> ano?.toString()
     "cor" -> cor
     "quilometragem" -> quilometragem?.toString()
-    "preco" -> preco?.toString()
+    "preco" -> preco?.let(::formatCurrencyForInput)
     "descricao" -> descricao
     "imagem_url" -> imagem_url
     "cliente_id" -> cliente_id?.toString()
     "veiculo_id" -> veiculo_id?.toString()
     "usuario_id" -> usuario_id?.toString()
     "data_venda" -> java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date())
-    "valor_venda" -> valor_venda?.toString()
+    "valor_venda" -> valor_venda?.let(::formatCurrencyForInput)
     "forma_pagamento" -> forma_pagamento
     else -> null
 }
@@ -730,7 +783,7 @@ private fun Map<String, String>.toRecord(resource: String): Record {
     fun text(key: String): String? = get(key)?.trim()?.takeIf(String::isNotEmpty)
     fun long(key: String): Long? = text(key)?.toLongOrNull()
     fun int(key: String): Int? = text(key)?.toIntOrNull()
-    fun decimal(key: String): Double? = text(key)?.replace(',', '.')?.toDoubleOrNull()
+    fun decimal(key: String): Double? = parseCurrency(text(key))
     return when (resource) {
         "usuarios" -> Record(
             nome = text("nome"), email = text("email"),
@@ -753,6 +806,37 @@ private fun Map<String, String>.toRecord(resource: String): Record {
         )
         else -> Record()
     }
+}
+
+private fun formatCurrencyTyping(input: String): String {
+    val lastComma = input.lastIndexOf(',')
+    val lastDot = input.lastIndexOf('.')
+    val decimalSeparator = when {
+        lastComma >= 0 -> lastComma
+        lastDot >= 0 && (input.length - lastDot - 1 <= 2) -> lastDot
+        else -> -1
+    }
+    val integerPart = (if (decimalSeparator >= 0) input.substring(0, decimalSeparator) else input)
+        .filter(Char::isDigit)
+        .trimStart('0')
+        .ifEmpty { "0" }
+    val groupedInteger = integerPart.reversed().chunked(3).joinToString(".").reversed()
+    if (decimalSeparator < 0) return groupedInteger
+    val fraction = input.substring(decimalSeparator + 1).filter(Char::isDigit).take(2)
+    return "$groupedInteger,$fraction"
+}
+
+private fun formatCurrencyForInput(value: Double): String =
+    NumberFormat.getNumberInstance(Locale.forLanguageTag("pt-BR")).apply {
+        minimumFractionDigits = 2
+        maximumFractionDigits = 2
+    }.format(value)
+
+private fun parseCurrency(value: String?): Double? {
+    val normalized = value?.trim()?.takeIf(String::isNotEmpty)?.let {
+        if (it.contains(',')) it.replace(".", "").replace(',', '.') else it
+    }
+    return normalized?.toDoubleOrNull()
 }
 
 private fun Record.titleFor(resource: String): String = when (resource) {

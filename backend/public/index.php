@@ -75,18 +75,29 @@ function requestBodyFields(array $body, array $allowed, array $required = []): a
 
 function authorizationHeader(): string
 {
-    $header = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
-    if ($header !== '') {
-        return $header;
+
+    foreach (['HTTP_AUTHORIZATION', 'REDIRECT_HTTP_AUTHORIZATION'] as $key) {
+        $header = $_SERVER[$key] ?? '';
+
+        if (is_string($header) && trim($header) !== '') {
+            return trim($header);
+        }
     }
+
     if (function_exists('getallheaders')) {
         foreach (getallheaders() as $name => $value) {
-            if (strcasecmp($name, 'Authorization') === 0 && is_string($value)) {
-                return $value;
+            if (
+                strcasecmp($name, 'Authorization') === 0 &&
+                is_string($value) &&
+                trim($value) !== ''
+            ) {
+                return trim($value);
             }
         }
     }
+
     return '';
+
 }
 
 function authenticate(PDO $pdo): array

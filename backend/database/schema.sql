@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS veiculos (
     ano SMALLINT UNSIGNED NOT NULL,
     cor VARCHAR(40) NOT NULL,
     quilometragem INT UNSIGNED NOT NULL DEFAULT 0,
-    preco DECIMAL(12, 2) NOT NULL,
+    preco DECIMAL(65, 2) NOT NULL,
+    quantidade_estoque INT UNSIGNED NOT NULL DEFAULT 1,
     descricao TEXT NULL,
     status ENUM('disponivel', 'vendido') NOT NULL DEFAULT 'disponivel',
     imagem_url VARCHAR(2048) NULL,
@@ -51,10 +52,11 @@ CREATE TABLE IF NOT EXISTS veiculos (
 CREATE TABLE IF NOT EXISTS vendas (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     cliente_id BIGINT UNSIGNED NOT NULL,
-    veiculo_id BIGINT UNSIGNED NOT NULL UNIQUE,
+    veiculo_id BIGINT UNSIGNED NOT NULL,
+    quantidade INT UNSIGNED NOT NULL DEFAULT 1,
     usuario_id BIGINT UNSIGNED NOT NULL,
     data_venda DATE NOT NULL,
-    valor_venda DECIMAL(12, 2) NOT NULL,
+    valor_venda DECIMAL(65, 2) NOT NULL,
     forma_pagamento VARCHAR(40) NOT NULL,
     criado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_vendas_clientes FOREIGN KEY (cliente_id)
@@ -64,6 +66,7 @@ CREATE TABLE IF NOT EXISTS vendas (
     CONSTRAINT fk_vendas_usuarios FOREIGN KEY (usuario_id)
         REFERENCES usuarios (id) ON UPDATE CASCADE ON DELETE RESTRICT,
     CONSTRAINT chk_vendas_valor CHECK (valor_venda >= 0),
+    INDEX idx_vendas_veiculo_id (veiculo_id),
     INDEX idx_vendas_data (data_venda)
 ) ENGINE=InnoDB;
 

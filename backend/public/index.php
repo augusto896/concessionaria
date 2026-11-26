@@ -153,7 +153,7 @@ function resourceConfig(string $resource): array
         ],
         'veiculos' => [
             'table' => 'veiculos',
-            'fields' => ['marca_id', 'modelo', 'ano', 'cor', 'quilometragem', 'preco', 'descricao', 'imagem_url'],
+            'fields' => ['marca_id', 'modelo', 'ano', 'cor', 'quilometragem', 'preco', 'quantidade_estoque', 'descricao', 'imagem_url'],
             'required' => ['marca_id', 'modelo', 'ano', 'cor', 'quilometragem', 'preco'],
         ],
     ];
@@ -215,9 +215,10 @@ try {
         authenticate($pdo);
         $counts = $pdo->query(
             "SELECT
-                (SELECT COUNT(*) FROM veiculos) AS total_veiculos,
-                (SELECT COUNT(*) FROM veiculos WHERE status = 'disponivel') AS veiculos_disponiveis,
-                (SELECT COUNT(*) FROM veiculos WHERE status = 'vendido') AS veiculos_vendidos,
+                (SELECT COALESCE(SUM(quantidade_estoque), 0) FROM veiculos) +
+                    (SELECT COALESCE(SUM(quantidade), 0) FROM vendas) AS total_veiculos,
+                (SELECT COALESCE(SUM(quantidade_estoque), 0) FROM veiculos) AS veiculos_disponiveis,
+                (SELECT COALESCE(SUM(quantidade), 0) FROM vendas) AS veiculos_vendidos,
                 (SELECT COUNT(*) FROM clientes) AS total_clientes,
                 (SELECT COUNT(*) FROM vendas) AS total_vendas"
         )->fetch();
@@ -228,7 +229,7 @@ try {
     if ($resource === 'vendas') {
         $user = authenticate($pdo);
         if ($method === 'GET' && count($parts) <= 2) {
-            $sql = 'SELECT v.id, v.cliente_id, v.veiculo_id, v.usuario_id, v.data_venda, v.valor_venda,
+            $sql = 'SELECT v.id, v.cliente_id, v.veiculo_id, v.quantidade, v.usuario_id, v.data_venda, v.valor_venda,
                            v.forma_pagamento, c.nome AS cliente_nome, m.nome AS marca_nome,
                            car.modelo AS veiculo_modelo, u.nome AS vendedor_nome
                     FROM vendas v
@@ -248,25 +249,42 @@ try {
             $body = input();
             $fields = requestBodyFields(
                 $body,
-                ['cliente_id', 'veiculo_id', 'veiculo_ids', 'data_venda', 'valor_venda', 'forma_pagamento', 'usuario_id'],
+                ['cliente_id', 'itens', 'veiculo_id', 'veiculo_ids', 'data_venda', 'valor_venda', 'forma_pagamento', 'usuario_id'],
                 ['cliente_id', 'data_venda', 'forma_pagamento']
             );
-            $vehicleIds = $fields['veiculo_ids'] ?? (
-                isset($fields['veiculo_id']) ? [$fields['veiculo_id']] : []
-            );
-            if (!is_array($vehicleIds) || $vehicleIds === []) {
+            $items = $fields['itens'] ?? null;
+            if ($items === null) {
+                $vehicleIds = $fields['veiculo_ids'] ?? (
+                    isset($fields['veiculo_id']) ? [$fields['veiculo_id']] : []
+                );
+                $items = is_array($vehicleIds)
+                    ? array_map(static fn($vehicleId): array => [
+                        'veiculo_id' => $vehicleId,
+                        'quantidade' => 1,
+                    ], $vehicleIds)
+                    : [];
+            }
+            if (!is_array($items) || $items === []) {
                 fail(422, 'validation_error', 'Selecione ao menos um veículo disponível.');
             }
-            foreach ($vehicleIds as $vehicleId) {
+            $quantities = [];
+            foreach ($items as $item) {
+                if (!is_array($item)) {
+                    fail(422, 'validation_error', 'Um item da venda é inválido.');
+                }
+                $vehicleId = $item['veiculo_id'] ?? null;
+                $quantity = $item['quantidade'] ?? 1;
                 if (
                     !(is_int($vehicleId) || (is_string($vehicleId) && ctype_digit($vehicleId))) ||
-                    (int)$vehicleId < 1
+                    (int)$vehicleId < 1 ||
+                    !(is_int($quantity) || (is_string($quantity) && ctype_digit($quantity))) ||
+                    (int)$quantity < 1
                 ) {
-                    fail(422, 'validation_error', 'A lista de veículos contém um identificador inválido.');
+                    fail(422, 'validation_error', 'Informe veículos e quantidades válidas.');
                 }
+                $quantities[(int)$vehicleId] = (int)$quantity;
             }
-            $vehicleIds = array_map('intval', $vehicleIds);
-            if (count(array_unique($vehicleIds)) !== count($vehicleIds)) {
+            if (count($quantities) !== count($items)) {
                 fail(422, 'validation_error', 'Um veículo foi selecionado mais de uma vez.');
             }
             if (isset($fields['valor_venda']) && (!is_numeric($fields['valor_venda']) || (float)$fields['valor_venda'] < 0)) {
@@ -276,9 +294,10 @@ try {
                 ? (int)($fields['usuario_id'] ?? $user['id'])
                 : (int)$user['id'];
             $pdo->beginTransaction();
+            $vehicleIds = array_keys($quantities);
             $vehiclePlaceholders = implode(', ', array_fill(0, count($vehicleIds), '?'));
             $vehicleQuery = $pdo->prepare(
-                "SELECT id, status, preco FROM veiculos WHERE id IN ({$vehiclePlaceholders}) ORDER BY id FOR UPDATE"
+                "SELECT id, status, preco, quantidade_estoque FROM veiculos WHERE id IN ({$vehiclePlaceholders}) ORDER BY id FOR UPDATE"
             );
             $vehicleQuery->execute($vehicleIds);
             $vehicles = $vehicleQuery->fetchAll();
@@ -287,34 +306,44 @@ try {
                 fail(422, 'invalid_vehicle', 'Um ou mais veículos selecionados não existem.');
             }
             foreach ($vehicles as $vehicle) {
-                if ($vehicle['status'] !== 'disponivel') {
+                $available = (int)$vehicle['quantidade_estoque'];
+                if ($available < $quantities[(int)$vehicle['id']]) {
                     $pdo->rollBack();
-                    fail(409, 'vehicle_already_sold', 'Um ou mais veículos não estão mais disponíveis para venda.');
+                    fail(409, 'insufficient_stock', 'A quantidade disponível mudou. Atualize o estoque e tente novamente.');
                 }
             }
-            if (count($vehicles) === 1 && isset($fields['valor_venda'])) {
-                $vehicles[0]['preco'] = $fields['valor_venda'];
-            }
             $insert = $pdo->prepare(
-                'INSERT INTO vendas (cliente_id, veiculo_id, usuario_id, data_venda, valor_venda, forma_pagamento)
-                 VALUES (?, ?, ?, ?, ?, ?)'
+                'INSERT INTO vendas (cliente_id, veiculo_id, quantidade, usuario_id, data_venda, valor_venda, forma_pagamento)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)'
             );
-            $update = $pdo->prepare("UPDATE veiculos SET status = 'vendido' WHERE id = ?");
+            $update = $pdo->prepare(
+                "UPDATE veiculos
+                 SET status = IF(quantidade_estoque > ?, 'disponivel', 'vendido'),
+                     quantidade_estoque = quantidade_estoque - ?
+                 WHERE id = ?"
+            );
             $saleIds = [];
             foreach ($vehicles as $vehicle) {
+                $quantity = $quantities[(int)$vehicle['id']];
                 $insert->execute([
-                    (int)$fields['cliente_id'], (int)$vehicle['id'], $sellerId,
-                    $fields['data_venda'], $vehicle['preco'], $fields['forma_pagamento'],
+                    (int)$fields['cliente_id'], (int)$vehicle['id'], $quantity, $sellerId,
+                    $fields['data_venda'], (float)$vehicle['preco'] * $quantity,
+                    $fields['forma_pagamento'],
                 ]);
                 $saleIds[] = (int)$pdo->lastInsertId();
-                $update->execute([(int)$vehicle['id']]);
+                $update->execute([$quantity, $quantity, (int)$vehicle['id']]);
             }
             if (!$saleIds) {
                 $pdo->rollBack();
                 fail(422, 'validation_error', 'Selecione ao menos um veículo disponível.');
             }
             $pdo->commit();
-            ok(['id' => $saleIds[0], 'ids' => $saleIds, 'quantidade' => count($saleIds)], 201);
+            ok([
+                'id' => $saleIds[0],
+                'ids' => $saleIds,
+                'itens' => count($saleIds),
+                'quantidade' => array_sum($quantities),
+            ], 201);
         }
         fail(405, 'method_not_allowed', 'Método não permitido para vendas.');
     }
@@ -353,6 +382,17 @@ try {
             $required = array_values(array_diff($required, ['marca_id']));
         }
         $fields = requestBodyFields($body, $config['fields'], $required);
+        if ($resource === 'veiculos') {
+            $fields['quantidade_estoque'] = $fields['quantidade_estoque'] ?? 1;
+            if (
+                !(is_int($fields['quantidade_estoque']) ||
+                    (is_string($fields['quantidade_estoque']) && ctype_digit($fields['quantidade_estoque']))) ||
+                (int)$fields['quantidade_estoque'] < 1
+            ) {
+                fail(422, 'validation_error', 'A quantidade disponível deve ser um número maior que zero.');
+            }
+            $fields['status'] = 'disponivel';
+        }
         if ($resource === 'usuarios') {
             $password = (string)($body['senha'] ?? '');
             if (strlen($password) < 8) {
@@ -408,6 +448,16 @@ try {
     if (in_array($method, ['PUT', 'PATCH'], true) && $id !== null && count($parts) === 2) {
         $body = input();
         $fields = requestBodyFields($body, $config['fields']);
+        if ($resource === 'veiculos' && isset($fields['quantidade_estoque'])) {
+            if (
+                !(is_int($fields['quantidade_estoque']) ||
+                    (is_string($fields['quantidade_estoque']) && ctype_digit($fields['quantidade_estoque'])))
+            ) {
+                fail(422, 'validation_error', 'A quantidade disponível deve ser um número inteiro igual ou maior que zero.');
+            }
+            $fields['quantidade_estoque'] = (int)$fields['quantidade_estoque'];
+            $fields['status'] = $fields['quantidade_estoque'] > 0 ? 'disponivel' : 'vendido';
+        }
         if ($resource === 'usuarios' && isset($body['senha']) && $body['senha'] !== '') {
             if (strlen((string)$body['senha']) < 8) {
                 fail(422, 'validation_error', 'A senha deve ter pelo menos 8 caracteres.');
@@ -449,6 +499,15 @@ try {
 } catch (PDOException $exception) {
     if (isset($pdo) && $pdo->inTransaction()) {
         $pdo->rollBack();
+    }
+    $sqlState = (string)($exception->errorInfo[0] ?? $exception->getCode());
+    if ($sqlState === '42S22' || $sqlState === '42S02') {
+        error_log($exception->getMessage());
+        fail(
+            500,
+            'schema_migration_required',
+            'O banco está desatualizado para esta versão. Faça backup e execute php migrate_inventory.php na pasta do backend.'
+        );
     }
     if ($exception->getCode() === '23000') {
         fail(409, 'relationship_conflict', 'O registro possui dados relacionados ou viola uma regra de unicidade.');

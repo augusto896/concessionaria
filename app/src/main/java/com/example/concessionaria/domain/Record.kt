@@ -18,12 +18,15 @@ data class Record(
     val cor: String? = null,
     val quilometragem: Int? = null,
     val preco: Double? = null,
+    val quantidade_estoque: Int? = null,
     val descricao: String? = null,
     val status: String? = null,
     val imagem_url: String? = null,
     val cliente_id: Long? = null,
     val veiculo_id: Long? = null,
     val veiculo_ids: List<Long>? = null,
+    val itens: List<SaleItem>? = null,
+    val quantidade: Int? = null,
     val usuario_id: Long? = null,
     val data_venda: String? = null,
     val valor_venda: Double? = null,
@@ -31,6 +34,11 @@ data class Record(
     val cliente_nome: String? = null,
     val veiculo_modelo: String? = null,
     val vendedor_nome: String? = null
+)
+
+data class SaleItem(
+    val veiculo_id: Long,
+    val quantidade: Int
 )
 
 data class Dashboard(

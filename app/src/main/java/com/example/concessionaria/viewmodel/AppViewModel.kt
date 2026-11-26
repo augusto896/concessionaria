@@ -94,7 +94,9 @@ class AppViewModel(
     fun save(resource: String, id: Long?, record: Record) = runRequest {
         repository.save(resource, id, record)
         val successMessage = when {
-            resource == "vendas" -> "Venda registrada para ${record.veiculo_ids?.size ?: 1} veículo(s)."
+            resource == "vendas" -> "Venda registrada para ${
+                record.itens?.sumOf { it.quantidade } ?: record.veiculo_ids?.size ?: 1
+            } veículo(s)."
             id == null -> "Cadastro realizado."
             else -> "Alterações salvas."
         }

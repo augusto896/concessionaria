@@ -15,14 +15,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -36,6 +39,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -215,10 +219,16 @@ private fun ConcessionariaApp(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             if (route != "login") {
                 TopAppBar(
-                    title = { Text(title) },
+                    title = {
+                        Column {
+                            Text("AUTOMOTIVO", style = MaterialTheme.typography.labelSmall)
+                            Text(title, style = MaterialTheme.typography.titleLarge)
+                        }
+                    },
                     navigationIcon = {
                         if (route != "dashboard") {
                             TextButton(onClick = {
@@ -240,7 +250,10 @@ private fun ConcessionariaApp(
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        titleContentColor = MaterialTheme.colorScheme.onPrimary,
+                        navigationIconContentColor = MaterialTheme.colorScheme.onPrimary,
+                        actionIconContentColor = MaterialTheme.colorScheme.onPrimary
                     )
                 )
             }
@@ -267,8 +280,8 @@ private fun ConcessionariaApp(
                                     fontSize = 24.sp
                                 )
                             },
-                            label = null,
-                            alwaysShowLabel = false
+                            label = { Text(spec.title) },
+                            alwaysShowLabel = true
                         )
                     }
                 }
@@ -353,9 +366,20 @@ private fun LoadingScreen() {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        CircularProgressIndicator()
-        Spacer(Modifier.height(12.dp))
-        Text("Carregando concessionária…")
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 32.dp, vertical = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                CircularProgressIndicator()
+                Spacer(Modifier.height(14.dp))
+                Text("Preparando sua concessionária", style = MaterialTheme.typography.titleMedium)
+            }
+        }
     }
 }
 
@@ -365,43 +389,76 @@ private fun LoginScreen(loading: Boolean, onLogin: (String, String) -> Unit) {
     var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp, vertical = 28.dp),
         verticalArrangement = Arrangement.Center
     ) {
-        Text("CONCESSIONÁRIA", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.height(12.dp))
-        Text("Bem-vindo", style = MaterialTheme.typography.headlineLarge)
-        Text("Entre para gerenciar sua loja de veículos.")
-        Spacer(Modifier.height(28.dp))
-        OutlinedTextField(
-            value = identity,
-            onValueChange = { identity = it },
-            label = { Text("Usuário ou email") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Senha") },
-            singleLine = true,
-            visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-            trailingIcon = {
-                TextButton(onClick = { showPassword = !showPassword }) {
-                    Text(if (showPassword) "Ocultar" else "Mostrar")
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(12.dp))
-        Button(
-            onClick = { onLogin(identity, password) },
-            enabled = !loading,
-            modifier = Modifier.fillMaxWidth()
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 8.dp
         ) {
-            if (loading) CircularProgressIndicator(modifier = Modifier.height(20.dp))
-            else Text("Entrar")
+            Column(Modifier.padding(24.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("🚘", fontSize = 34.sp)
+                        Text(
+                            "GESTÃO AUTOMOTIVA",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text("Tudo em movimento.", style = MaterialTheme.typography.headlineSmall)
+                        Text("Estoque, clientes e vendas em um só lugar.")
+                    }
+                }
+                Spacer(Modifier.height(24.dp))
+                Text("Bem-vindo de volta", style = MaterialTheme.typography.headlineSmall)
+                Text("Entre para acessar sua concessionária.")
+                Spacer(Modifier.height(22.dp))
+                OutlinedTextField(
+                    value = identity,
+                    onValueChange = { identity = it },
+                    label = { Text("Usuário ou email") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Senha") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        TextButton(onClick = { showPassword = !showPassword }) {
+                            Text(if (showPassword) "Ocultar" else "Mostrar")
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(18.dp))
+                Button(
+                    onClick = { onLogin(identity, password) },
+                    enabled = !loading,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth().height(54.dp)
+                ) {
+                    if (loading) CircularProgressIndicator(modifier = Modifier.height(20.dp))
+                    else Text("Entrar na minha conta", style = MaterialTheme.typography.titleMedium)
+                }
+            }
         }
     }
 }
@@ -417,36 +474,76 @@ private fun DashboardScreen(
     val greeting = settings.displayName.ifBlank { state.user?.nome.orEmpty() }
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            Spacer(Modifier.height(8.dp))
-            Text("Olá, $greeting", style = MaterialTheme.typography.headlineSmall)
-            Text("Resumo atualizado diretamente pela API.")
+            Spacer(Modifier.height(6.dp))
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.primary
+            ) {
+                Column(
+                    modifier = Modifier.padding(22.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("PAINEL DA CONCESSIONÁRIA", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primaryContainer)
+                    Text(
+                        "Olá, ${greeting.ifBlank { "por aqui" }}",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Text(
+                        "Acompanhe o desempenho e o estoque da sua loja.",
+                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f)
+                    )
+                }
+            }
+        }
+        item {
+            Text("Resumo do negócio", style = MaterialTheme.typography.titleLarge)
         }
         if (state.loading && dashboard == null) {
-            item { CircularProgressIndicator() }
+            item {
+                Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            }
         } else {
-            item { StatCard("Veículos cadastrados", dashboard?.total_veiculos ?: 0) }
-            item { StatCard("Disponíveis", dashboard?.veiculos_disponiveis ?: 0) }
-            item { StatCard("Vendidos", dashboard?.veiculos_vendidos ?: 0) }
-            item { StatCard("Clientes", dashboard?.total_clientes ?: 0) }
-            item { StatCard("Vendas realizadas", dashboard?.total_vendas ?: 0) }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StatCard("Veículos", dashboard?.total_veiculos ?: 0, "🚘", Modifier.weight(1f))
+                    StatCard("Disponíveis", dashboard?.veiculos_disponiveis ?: 0, "✓", Modifier.weight(1f))
+                }
+            }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StatCard("Vendidos", dashboard?.veiculos_vendidos ?: 0, "↗", Modifier.weight(1f))
+                    StatCard("Clientes", dashboard?.total_clientes ?: 0, "👥", Modifier.weight(1f))
+                }
+            }
+            item {
+                StatCard("Vendas realizadas", dashboard?.total_vendas ?: 0, "R$", Modifier.fillMaxWidth())
+            }
         }
         item { Spacer(Modifier.height(16.dp)) }
     }
 }
 
 @Composable
-private fun StatCard(label: String, value: Int) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(18.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+private fun StatCard(label: String, value: Int, icon: String, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(label, style = MaterialTheme.typography.titleMedium)
-            Text(value.toString(), style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+            Text(icon, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.tertiary)
+            Text(value.toString(), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+            Text(label, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -511,19 +608,67 @@ private fun ModuleScreen(
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancelar") } }
         )
     }
-    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Spacer(Modifier.height(2.dp))
+        Text(
+            when (resource) {
+                "veiculos" -> "Gerencie seu estoque de veículos."
+                "clientes" -> "Mantenha os dados dos seus clientes organizados."
+                "marcas" -> "Consulte e organize as marcas do estoque."
+                "vendas" -> "Acompanhe as vendas registradas pela equipe."
+                "usuarios" -> "Gerencie os acessos da sua equipe."
+                else -> ""
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("${state.records.size} registro(s)", style = MaterialTheme.typography.titleMedium)
-            TextButton(onClick = onRefresh) { Text("Atualizar") }
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.secondaryContainer
+            ) {
+                Text(
+                    "${state.records.size} registro(s)",
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+            OutlinedButton(onClick = onRefresh, shape = RoundedCornerShape(14.dp)) {
+                Text("↻  Atualizar")
+            }
         }
         if (state.loading && state.records.isEmpty()) {
-            CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+            Box(Modifier.fillMaxWidth().padding(vertical = 36.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
         } else if (state.records.isEmpty()) {
-            Text("Nenhum registro cadastrado.", modifier = Modifier.padding(top = 24.dp))
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(resourceEmoji[resource].orEmpty(), fontSize = 34.sp)
+                    Text("Ainda não há registros", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Toque no botão + para adicionar o primeiro.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(
@@ -555,33 +700,72 @@ private fun RecordCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
             if (resource == "veiculos" && !record.imagem_url.isNullOrBlank()) {
                 AsyncImage(
                     model = record.imagem_url,
                     contentDescription = record.titleFor(resource),
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth().height(170.dp)
+                    modifier = Modifier.fillMaxWidth().height(190.dp)
                 )
                 Spacer(Modifier.height(10.dp))
             }
-            Text(record.titleFor(resource), style = MaterialTheme.typography.titleMedium)
+            Text(record.titleFor(resource), style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(4.dp))
-            Text(record.subtitleFor(resource), style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.height(6.dp))
+            Text(
+                record.subtitleFor(resource),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(10.dp))
             when (resource) {
-                "veiculos" -> Text(
-                    "${record.status?.replaceFirstChar { it.uppercase() } ?: "Disponível"} · ${record.preco?.asCurrency() ?: "—"}",
+                "veiculos" -> Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = if (record.status == "vendido") MaterialTheme.colorScheme.tertiaryContainer
+                        else MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Text(
+                            record.status?.replaceFirstChar { it.uppercase() } ?: "Disponível",
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                    Text(
+                        record.preco?.asCurrency() ?: "—",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                "vendas" -> Text(
+                    "${record.data_venda ?: "—"} · ${record.valor_venda?.asCurrency() ?: "—"}",
+                    style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
-                "vendas" -> Text("${record.data_venda ?: "—"} · ${record.valor_venda?.asCurrency() ?: "—"}")
-                "clientes" -> Text(record.telefone.orEmpty())
+                "clientes" -> Text(
+                    record.telefone.orEmpty(),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
             if (canEdit || canDelete) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
                     if (canEdit) TextButton(onClick = onEdit) { Text("Editar") }
-                    if (canDelete) TextButton(onClick = onDelete) { Text("Excluir") }
+                    if (canDelete) TextButton(onClick = onDelete) {
+                        Text("Excluir", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         }
@@ -988,32 +1172,81 @@ private fun SettingsScreen(
 ) {
     var displayName by remember(settings.displayName) { mutableStateOf(settings.displayName) }
     Column(
-        modifier = Modifier.fillMaxSize().padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("Preferências salvas neste dispositivo.", style = MaterialTheme.typography.bodyLarge)
-        OutlinedTextField(
-            value = displayName,
-            onValueChange = { displayName = it },
-            label = { Text("Nome de exibição") },
-            modifier = Modifier.fillMaxWidth()
+        Text("Personalize sua experiência", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            "Essas preferências são salvas neste dispositivo.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Button(onClick = { onUpdate(displayName.trim(), null, null, null) }) {
-            Text("Salvar nome")
-        }
-        PreferenceSwitch("Tema escuro", settings.darkTheme) {
-            onUpdate(null, it, null, null)
-        }
-        PreferenceSwitch("Preferir notificações", settings.notifications) {
-            onUpdate(null, null, it, null)
-        }
-        Text("Ordenação dos veículos", style = MaterialTheme.typography.titleMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { onUpdate(null, null, null, "recentes") }) {
-                Text(if (settings.vehicleSort == "recentes") "✓ Recentes" else "Recentes")
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("Perfil", style = MaterialTheme.typography.titleMedium)
+                OutlinedTextField(
+                    value = displayName,
+                    onValueChange = { displayName = it },
+                    label = { Text("Nome de exibição") },
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Button(
+                    onClick = { onUpdate(displayName.trim(), null, null, null) },
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Text("Salvar nome")
+                }
             }
-            OutlinedButton(onClick = { onUpdate(null, null, null, "preco") }) {
-                Text(if (settings.vehicleSort == "preco") "✓ Menor preço" else "Menor preço")
+        }
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                PreferenceSwitch("Tema escuro", settings.darkTheme) {
+                    onUpdate(null, it, null, null)
+                }
+                PreferenceSwitch("Preferir notificações", settings.notifications) {
+                    onUpdate(null, null, it, null)
+                }
+            }
+        }
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("Ordenação dos veículos", style = MaterialTheme.typography.titleMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { onUpdate(null, null, null, "recentes") },
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text(if (settings.vehicleSort == "recentes") "✓ Recentes" else "Recentes")
+                    }
+                    OutlinedButton(
+                        onClick = { onUpdate(null, null, null, "preco") },
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text(if (settings.vehicleSort == "preco") "✓ Menor preço" else "Menor preço")
+                    }
+                }
             }
         }
     }

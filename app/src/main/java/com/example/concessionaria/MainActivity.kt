@@ -26,10 +26,12 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -289,14 +291,20 @@ private fun ConcessionariaApp(
         },
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
-            if (route.startsWith("module/") && currentResource != null &&
-                currentResource != "vendas" || route.startsWith("module/vendas")
+            if (
+                route.startsWith("module/") &&
+                currentResource != null &&
+                (currentResource != "usuarios" || state.user?.cargo == "admin")
             ) {
-                if (currentResource != "usuarios" || state.user?.cargo == "admin") {
-                    FloatingActionButton(onClick = {
-                        scope.launch { navController.currentBackStackEntry?.savedStateHandle?.set("new_record", true) }
-                    }) { Text("+") }
-                }
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        navController.currentBackStackEntry?.savedStateHandle?.set("new_record", true)
+                    },
+                    text = {
+                        Text(if (currentResource == "vendas") "Registrar venda" else "Adicionar")
+                    },
+                    icon = { Text("+") }
+                )
             }
         }
     ) { padding ->
@@ -663,7 +671,11 @@ private fun ModuleScreen(
                     Text(resourceEmoji[resource].orEmpty(), fontSize = 34.sp)
                     Text("Ainda não há registros", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Toque no botão + para adicionar o primeiro.",
+                        if (resource == "vendas") {
+                            "Toque em Registrar venda para associar um cliente aos veículos."
+                        } else {
+                            "Toque em Adicionar para criar o primeiro registro."
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -782,6 +794,14 @@ private fun RecordEditor(
     onDismiss: () -> Unit,
     onSave: (Record) -> Unit
 ) {
+    if (resource == "vendas") {
+        SaleEditor(
+            lookups = lookups,
+            onDismiss = onDismiss,
+            onSave = onSave
+        )
+        return
+    }
     val values = remember(record?.id) {
         mutableStateMapOf<String, String>().apply {
             spec.fields.forEach { field -> put(field.key, record?.fieldValue(field.key).orEmpty()) }
@@ -938,6 +958,184 @@ private fun RecordEditor(
                     if (!missing) onSave(values.toRecord(resource))
                 }
             ) { Text("Salvar") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
+}
+
+@Composable
+private fun SaleEditor(
+    lookups: Map<String, List<Record>>,
+    onDismiss: () -> Unit,
+    onSave: (Record) -> Unit
+) {
+    val clients = lookups["clientes"].orEmpty()
+    val availableVehicles = lookups["veiculos"].orEmpty()
+        .filter { it.status == "disponivel" }
+    var selectedClient by remember { mutableStateOf("") }
+    val selectedVehicles = remember { mutableStateMapOf<Long, Boolean>() }
+    var requestedQuantity by remember(availableVehicles.size) {
+        mutableStateOf(if (availableVehicles.isEmpty()) 0 else 1)
+    }
+    var saleDate by remember {
+        mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date()))
+    }
+    var paymentMethod by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val selectedIds = selectedVehicles.filterValues { it }.keys.toList()
+    val total = availableVehicles
+        .filter { it.id in selectedIds }
+        .sumOf { it.preco ?: 0.0 }
+    val canSave = selectedClient.toLongOrNull() != null &&
+        selectedIds.size == requestedQuantity &&
+        requestedQuantity > 0 &&
+        paymentMethod.isNotBlank()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Registrar venda") },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth().height(480.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("1. Escolha o cliente", style = MaterialTheme.typography.titleMedium)
+                if (clients.isEmpty()) {
+                    Text("Cadastre um cliente antes de registrar a venda.")
+                }
+                ChoiceField(
+                    label = "Cliente",
+                    value = selectedClient,
+                    choices = clients.mapNotNull { client ->
+                        client.id?.let { Choice(it.toString(), client.nome.orEmpty()) }
+                    },
+                    onSelect = { selectedClient = it }
+                )
+
+                Text("2. Selecione os veículos", style = MaterialTheme.typography.titleMedium)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Quantidade de carros")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedButton(
+                            onClick = {
+                                val newQuantity = (requestedQuantity - 1).coerceAtLeast(1)
+                                requestedQuantity = newQuantity
+                                selectedIds.drop(newQuantity).forEach { selectedVehicles.remove(it) }
+                            },
+                            enabled = requestedQuantity > 1
+                        ) { Text("−") }
+                        Text(
+                            requestedQuantity.toString(),
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                        OutlinedButton(
+                            onClick = { requestedQuantity++ },
+                            enabled = requestedQuantity < availableVehicles.size
+                        ) { Text("+") }
+                    }
+                }
+                Text(
+                    "Selecione ${requestedQuantity} carro(s) disponível(is). " +
+                        "${selectedIds.size} de $requestedQuantity selecionado(s).",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (availableVehicles.isEmpty()) {
+                    Text("Não há veículos disponíveis para venda.")
+                } else {
+                    availableVehicles.forEach { vehicle ->
+                        val id = vehicle.id ?: return@forEach
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = selectedVehicles[id] == true,
+                                    enabled = selectedVehicles[id] == true || selectedIds.size < requestedQuantity,
+                                    onCheckedChange = { selectedVehicles[id] = it }
+                                )
+                                Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                                    Text(
+                                        listOfNotNull(vehicle.marca_nome, vehicle.modelo, vehicle.ano?.toString())
+                                            .joinToString(" "),
+                                        style = MaterialTheme.typography.titleSmall
+                                    )
+                                    Text(
+                                        vehicle.preco?.asCurrency() ?: "Preço não informado",
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Text("3. Dados da venda", style = MaterialTheme.typography.titleMedium)
+                OutlinedButton(
+                    onClick = {
+                        val calendar = Calendar.getInstance()
+                        DatePickerDialog(
+                            context,
+                            { _, year, month, day ->
+                                saleDate = String.format(
+                                    Locale.US,
+                                    "%04d-%02d-%02d",
+                                    year,
+                                    month + 1,
+                                    day
+                                )
+                            },
+                            calendar.get(Calendar.YEAR),
+                            calendar.get(Calendar.MONTH),
+                            calendar.get(Calendar.DAY_OF_MONTH)
+                        ).show()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    val formattedDate = runCatching {
+                        SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(saleDate)?.let {
+                            SimpleDateFormat("dd/MM/yyyy", Locale.forLanguageTag("pt-BR")).format(it)
+                        }
+                    }.getOrNull()
+                    Text("Data da venda: ${formattedDate ?: saleDate}")
+                }
+                OutlinedTextField(
+                    value = paymentMethod,
+                    onValueChange = { paymentMethod = it },
+                    label = { Text("Forma de pagamento") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    "Total: ${total.asCurrency()}",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(
+                        Record(
+                            cliente_id = selectedClient.toLongOrNull(),
+                            veiculo_ids = selectedIds,
+                            data_venda = saleDate,
+                            forma_pagamento = paymentMethod.trim()
+                        )
+                    )
+                },
+                enabled = canSave
+            ) { Text("Confirmar venda") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
     )

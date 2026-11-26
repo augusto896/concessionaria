@@ -248,37 +248,73 @@ try {
             $body = input();
             $fields = requestBodyFields(
                 $body,
-                ['cliente_id', 'veiculo_id', 'data_venda', 'valor_venda', 'forma_pagamento', 'usuario_id'],
-                ['cliente_id', 'veiculo_id', 'data_venda', 'valor_venda', 'forma_pagamento']
+                ['cliente_id', 'veiculo_id', 'veiculo_ids', 'data_venda', 'valor_venda', 'forma_pagamento', 'usuario_id'],
+                ['cliente_id', 'data_venda', 'forma_pagamento']
             );
+            $vehicleIds = $fields['veiculo_ids'] ?? (
+                isset($fields['veiculo_id']) ? [$fields['veiculo_id']] : []
+            );
+            if (!is_array($vehicleIds) || $vehicleIds === []) {
+                fail(422, 'validation_error', 'Selecione ao menos um veículo disponível.');
+            }
+            foreach ($vehicleIds as $vehicleId) {
+                if (
+                    !(is_int($vehicleId) || (is_string($vehicleId) && ctype_digit($vehicleId))) ||
+                    (int)$vehicleId < 1
+                ) {
+                    fail(422, 'validation_error', 'A lista de veículos contém um identificador inválido.');
+                }
+            }
+            $vehicleIds = array_map('intval', $vehicleIds);
+            if (count(array_unique($vehicleIds)) !== count($vehicleIds)) {
+                fail(422, 'validation_error', 'Um veículo foi selecionado mais de uma vez.');
+            }
+            if (isset($fields['valor_venda']) && (!is_numeric($fields['valor_venda']) || (float)$fields['valor_venda'] < 0)) {
+                fail(422, 'validation_error', 'O valor da venda deve ser um número igual ou maior que zero.');
+            }
             $sellerId = $user['cargo'] === 'admin'
                 ? (int)($fields['usuario_id'] ?? $user['id'])
                 : (int)$user['id'];
             $pdo->beginTransaction();
-            $vehicleQuery = $pdo->prepare('SELECT status FROM veiculos WHERE id = ? FOR UPDATE');
-            $vehicleQuery->execute([(int)$fields['veiculo_id']]);
-            $vehicle = $vehicleQuery->fetch();
-            if (!$vehicle) {
+            $vehiclePlaceholders = implode(', ', array_fill(0, count($vehicleIds), '?'));
+            $vehicleQuery = $pdo->prepare(
+                "SELECT id, status, preco FROM veiculos WHERE id IN ({$vehiclePlaceholders}) ORDER BY id FOR UPDATE"
+            );
+            $vehicleQuery->execute($vehicleIds);
+            $vehicles = $vehicleQuery->fetchAll();
+            if (count($vehicles) !== count($vehicleIds)) {
                 $pdo->rollBack();
-                fail(422, 'invalid_vehicle', 'O veículo informado não existe.');
+                fail(422, 'invalid_vehicle', 'Um ou mais veículos selecionados não existem.');
             }
-            if ($vehicle['status'] !== 'disponivel') {
-                $pdo->rollBack();
-                fail(409, 'vehicle_already_sold', 'Este veículo não está disponível para venda.');
+            foreach ($vehicles as $vehicle) {
+                if ($vehicle['status'] !== 'disponivel') {
+                    $pdo->rollBack();
+                    fail(409, 'vehicle_already_sold', 'Um ou mais veículos não estão mais disponíveis para venda.');
+                }
+            }
+            if (count($vehicles) === 1 && isset($fields['valor_venda'])) {
+                $vehicles[0]['preco'] = $fields['valor_venda'];
             }
             $insert = $pdo->prepare(
                 'INSERT INTO vendas (cliente_id, veiculo_id, usuario_id, data_venda, valor_venda, forma_pagamento)
                  VALUES (?, ?, ?, ?, ?, ?)'
             );
-            $insert->execute([
-                (int)$fields['cliente_id'], (int)$fields['veiculo_id'], $sellerId,
-                $fields['data_venda'], $fields['valor_venda'], $fields['forma_pagamento'],
-            ]);
-            $saleId = (int)$pdo->lastInsertId();
             $update = $pdo->prepare("UPDATE veiculos SET status = 'vendido' WHERE id = ?");
-            $update->execute([(int)$fields['veiculo_id']]);
+            $saleIds = [];
+            foreach ($vehicles as $vehicle) {
+                $insert->execute([
+                    (int)$fields['cliente_id'], (int)$vehicle['id'], $sellerId,
+                    $fields['data_venda'], $vehicle['preco'], $fields['forma_pagamento'],
+                ]);
+                $saleIds[] = (int)$pdo->lastInsertId();
+                $update->execute([(int)$vehicle['id']]);
+            }
+            if (!$saleIds) {
+                $pdo->rollBack();
+                fail(422, 'validation_error', 'Selecione ao menos um veículo disponível.');
+            }
             $pdo->commit();
-            ok(['id' => $saleId], 201);
+            ok(['id' => $saleIds[0], 'ids' => $saleIds, 'quantidade' => count($saleIds)], 201);
         }
         fail(405, 'method_not_allowed', 'Método não permitido para vendas.');
     }

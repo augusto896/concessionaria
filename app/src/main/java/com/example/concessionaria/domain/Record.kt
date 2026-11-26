@@ -23,6 +23,7 @@ data class Record(
     val imagem_url: String? = null,
     val cliente_id: Long? = null,
     val veiculo_id: Long? = null,
+    val veiculo_ids: List<Long>? = null,
     val usuario_id: Long? = null,
     val data_venda: String? = null,
     val valor_venda: Double? = null,

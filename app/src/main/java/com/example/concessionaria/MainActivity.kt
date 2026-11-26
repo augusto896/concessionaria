@@ -69,6 +69,7 @@ import com.example.concessionaria.viewmodel.AppViewModel
 import com.example.concessionaria.viewmodel.AppUiState
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
+import java.math.BigDecimal
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -499,7 +500,7 @@ private fun ModuleScreen(
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(
                 if (resource == "veiculos" && vehicleSort == "preco") {
-                    state.records.sortedBy { it.preco }
+                    state.records.sortedBy { it.preco?.toBigDecimalOrNull() }
                 } else state.records,
                 key = { it.id ?: it.hashCode().toLong() }
             ) { record ->
@@ -605,9 +606,15 @@ private fun RecordEditor(
                             singleLine = field.key != "endereco" && field.key != "descricao",
                             visualTransformation = if (field.key == "senha") PasswordVisualTransformation()
                             else VisualTransformation.None,
-                            keyboardOptions = if (field.key in setOf("ano", "quilometragem", "preco", "valor_venda", "cpf")) {
-                                KeyboardOptions.Default.copy(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
-                            } else KeyboardOptions.Default,
+                            keyboardOptions = when (field.key) {
+                                "preco", "valor_venda" -> KeyboardOptions.Default.copy(
+                                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal
+                                )
+                                "ano", "quilometragem", "cpf" -> KeyboardOptions.Default.copy(
+                                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                                )
+                                else -> KeyboardOptions.Default
+                            },
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -688,7 +695,7 @@ private fun Record.fieldValue(key: String): String? = when (key) {
     "ano" -> ano?.toString()
     "cor" -> cor
     "quilometragem" -> quilometragem?.toString()
-    "preco" -> preco?.toString()
+    "preco" -> preco
     "descricao" -> descricao
     "imagem_url" -> imagem_url
     "cliente_id" -> cliente_id?.toString()
@@ -717,7 +724,8 @@ private fun Map<String, String>.toRecord(resource: String): Record {
         "marcas" -> Record(nome = text("nome"), pais_origem = text("pais_origem"))
         "veiculos" -> Record(
             marca_id = long("marca_id"), modelo = text("modelo"), ano = int("ano"),
-            cor = text("cor"), quilometragem = int("quilometragem"), preco = decimal("preco"),
+            cor = text("cor"), quilometragem = int("quilometragem"),
+            preco = text("preco")?.replace(',', '.')?.takeIf { it.toBigDecimalOrNull() != null },
             descricao = text("descricao"), imagem_url = text("imagem_url")
         )
         "vendas" -> Record(
@@ -749,6 +757,10 @@ private fun Record.subtitleFor(resource: String): String = when (resource) {
 
 private fun Double.asCurrency(): String =
     NumberFormat.getCurrencyInstance(Locale.forLanguageTag("pt-BR")).format(this)
+
+private fun String.asCurrency(): String =
+    NumberFormat.getCurrencyInstance(Locale.forLanguageTag("pt-BR"))
+        .format(BigDecimal(this))
 
 @Composable
 private fun SettingsScreen(

@@ -17,7 +17,7 @@ data class Record(
     val ano: Int? = null,
     val cor: String? = null,
     val quilometragem: Int? = null,
-    val preco: Double? = null,
+    val preco: String? = null,
     val descricao: String? = null,
     val status: String? = null,
     val imagem_url: String? = null,

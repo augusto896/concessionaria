@@ -5,11 +5,18 @@ Backend PHP 8.1+ com PDO/MySQL para uso local no WampServer. O Android acessa es
 ## Instalação no WampServer
 
 1. Copie a pasta `backend` para `C:\wamp64\www\concessionaria-api` (ou ajuste o caminho do projeto).
-2. No phpMyAdmin, importe `backend/database/schema.sql`. O script cria o banco `concessionaria` e as seis tabelas relacionadas.
+2. No phpMyAdmin, importe `backend/database/schema.sql`. O script cria o banco `concessionaria` e as seis tabelas relacionadas. O preço dos veículos aceita até 63 dígitos antes dos centavos.
 3. Copie `backend/config.example.php` para `backend/config.php` e informe host, porta, banco e credenciais MySQL locais. Esse arquivo é ignorado pelo Git.
 4. Habilite `mod_rewrite` no Apache e confirme que `AllowOverride All` está habilitado para `www`; a regra em `public/.htaccess` encaminha as rotas ao PHP.
 5. Aponte o DocumentRoot para `backend/public` (recomendado) ou configure um alias para essa pasta. A URL base local ficará, por exemplo, `http://localhost/concessionaria-api/public/api/v1/`.
 6. Crie o primeiro usuário administrador no terminal, a partir de `backend`: `php create_admin.php admin admin@example.com "Administrador"`. A senha é solicitada sem ser gravada em texto puro.
+
+Se o banco já foi criado antes do aumento do limite de preço, atualize a coluna uma vez no phpMyAdmin:
+
+```sql
+USE concessionaria;
+ALTER TABLE veiculos MODIFY preco DECIMAL(65, 2) NOT NULL;
+```
 
 Emulador Android Studio: configure `API_BASE_URL` como `http://10.0.2.2/concessionaria-api/public/api/v1/`. Em aparelho físico, use o endereço IP local do computador e permita o tráfego Apache no firewall. HTTP sem TLS é somente para desenvolvimento local; use HTTPS antes de disponibilizar a API em uma rede não confiável.
 

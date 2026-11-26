@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS veiculos (
     ano SMALLINT UNSIGNED NOT NULL,
     cor VARCHAR(40) NOT NULL,
     quilometragem INT UNSIGNED NOT NULL DEFAULT 0,
-    preco DECIMAL(12, 2) NOT NULL,
+    preco DECIMAL(65, 2) NOT NULL,
     descricao TEXT NULL,
     status ENUM('disponivel', 'vendido') NOT NULL DEFAULT 'disponivel',
     imagem_url VARCHAR(2048) NULL,

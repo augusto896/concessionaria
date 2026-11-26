@@ -987,6 +987,12 @@ private fun SaleEditor(
         mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date()))
     }
     var paymentMethod by remember { mutableStateOf("") }
+    val paymentMethods = listOf(
+        Choice("debito", "Débito"),
+        Choice("credito", "Crédito"),
+        Choice("dinheiro vivo", "Dinheiro vivo"),
+        Choice("pix", "Pix")
+    )
     val context = LocalContext.current
     val selectedItems = selectedVehicles.filterValues { it > 0 }
     val total = availableVehicles
@@ -1115,12 +1121,11 @@ private fun SaleEditor(
                     }.getOrNull()
                     Text("Data da venda: ${formattedDate ?: saleDate}")
                 }
-                OutlinedTextField(
+                ChoiceField(
+                    label = "Forma de pagamento",
                     value = paymentMethod,
-                    onValueChange = { paymentMethod = it },
-                    label = { Text("Forma de pagamento") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    choices = paymentMethods,
+                    onSelect = { paymentMethod = it }
                 )
                 Text(
                     "Total: ${total.asCurrency()}",

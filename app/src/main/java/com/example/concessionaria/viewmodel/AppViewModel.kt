@@ -93,8 +93,19 @@ class AppViewModel(
 
     fun save(resource: String, id: Long?, record: Record) = runRequest {
         repository.save(resource, id, record)
-        mutableState.update { it.copy(message = if (id == null) "Cadastro realizado." else "Alterações salvas.") }
+        val successMessage = when {
+            resource == "vendas" -> "Venda registrada para ${
+                record.itens?.sumOf { it.quantidade } ?: record.veiculo_ids?.size ?: 1
+            } veículo(s)."
+            id == null -> "Cadastro realizado."
+            else -> "Alterações salvas."
+        }
+        mutableState.update { it.copy(message = successMessage) }
         mutableState.update { it.copy(records = repository.list(resource)) }
+        if (resource == "vendas") {
+            val vehicles = repository.list("veiculos")
+            mutableState.update { it.copy(lookups = it.lookups + ("veiculos" to vehicles)) }
+        }
         if (resource == "veiculos" || resource == "vendas" || resource == "clientes") refreshDashboard()
     }
 

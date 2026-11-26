@@ -26,10 +26,12 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -74,6 +76,7 @@ import androidx.navigation.navArgument
 import com.example.concessionaria.data.repository.ConcessionariaRepository
 import com.example.concessionaria.domain.Dashboard
 import com.example.concessionaria.domain.Record
+import com.example.concessionaria.domain.SaleItem
 import com.example.concessionaria.preferences.AppSettings
 import com.example.concessionaria.preferences.UserPreferences
 import com.example.concessionaria.ui.theme.ConcessionariaTheme
@@ -150,7 +153,8 @@ private val resourceSpecs = mapOf(
             FormField("ano", "Ano"),
             FormField("cor", "Cor"),
             FormField("quilometragem", "Quilometragem"),
-            FormField("preco", "Preço (R$)")
+            FormField("preco", "Preço (R$)"),
+            FormField("quantidade_estoque", "Quantidade disponível")
         )
     ),
     "vendas" to ResourceSpec(
@@ -289,14 +293,20 @@ private fun ConcessionariaApp(
         },
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
-            if (route.startsWith("module/") && currentResource != null &&
-                currentResource != "vendas" || route.startsWith("module/vendas")
+            if (
+                route.startsWith("module/") &&
+                currentResource != null &&
+                (currentResource != "usuarios" || state.user?.cargo == "admin")
             ) {
-                if (currentResource != "usuarios" || state.user?.cargo == "admin") {
-                    FloatingActionButton(onClick = {
-                        scope.launch { navController.currentBackStackEntry?.savedStateHandle?.set("new_record", true) }
-                    }) { Text("+") }
-                }
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        navController.currentBackStackEntry?.savedStateHandle?.set("new_record", true)
+                    },
+                    text = {
+                        Text(if (currentResource == "vendas") "Registrar venda" else "Adicionar")
+                    },
+                    icon = { Text("+") }
+                )
             }
         }
     ) { padding ->
@@ -663,7 +673,11 @@ private fun ModuleScreen(
                     Text(resourceEmoji[resource].orEmpty(), fontSize = 34.sp)
                     Text("Ainda não há registros", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Toque no botão + para adicionar o primeiro.",
+                        if (resource == "vendas") {
+                            "Toque em Registrar venda para associar um cliente aos veículos."
+                        } else {
+                            "Toque em Adicionar para criar o primeiro registro."
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -731,11 +745,12 @@ private fun RecordCard(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(50),
-                        color = if (record.status == "vendido") MaterialTheme.colorScheme.tertiaryContainer
+                        color = if ((record.quantidade_estoque ?: 1) == 0) MaterialTheme.colorScheme.tertiaryContainer
                         else MaterialTheme.colorScheme.secondaryContainer
                     ) {
                         Text(
-                            record.status?.replaceFirstChar { it.uppercase() } ?: "Disponível",
+                            if ((record.quantidade_estoque ?: 1) == 0) "Sem estoque"
+                            else "Disponível: ${record.quantidade_estoque ?: 1}",
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             style = MaterialTheme.typography.labelLarge
                         )
@@ -782,10 +797,21 @@ private fun RecordEditor(
     onDismiss: () -> Unit,
     onSave: (Record) -> Unit
 ) {
+    if (resource == "vendas") {
+        SaleEditor(
+            lookups = lookups,
+            onDismiss = onDismiss,
+            onSave = onSave
+        )
+        return
+    }
     val values = remember(record?.id) {
         mutableStateMapOf<String, String>().apply {
             spec.fields.forEach { field -> put(field.key, record?.fieldValue(field.key).orEmpty()) }
-            if (resource == "veiculos") put("marca_nome", record?.marca_nome.orEmpty())
+            if (resource == "veiculos") {
+                put("marca_nome", record?.marca_nome.orEmpty())
+                put("quantidade_estoque", record?.quantidade_estoque?.toString() ?: "1")
+            }
         }
     }
     val fields = if (resource == "usuarios") {
@@ -898,6 +924,7 @@ private fun RecordEditor(
                                     "preco", "valor_venda" -> normalizeCurrencyInput(it)
                                     "ano", "quilometragem", "cpf" -> it.filter(Char::isDigit)
                                         .let { digits -> if (field.key == "cpf") digits.take(11) else digits }
+                                    "quantidade_estoque" -> it.filter(Char::isDigit)
                                     else -> it
                                 }
                             },
@@ -911,7 +938,7 @@ private fun RecordEditor(
                                 "preco", "valor_venda" -> KeyboardOptions.Default.copy(
                                     keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal
                                 )
-                                "ano", "quilometragem", "cpf" -> KeyboardOptions.Default.copy(
+                                "ano", "quilometragem", "cpf", "quantidade_estoque" -> KeyboardOptions.Default.copy(
                                     keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
                                 )
                                 "telefone" -> KeyboardOptions.Default.copy(
@@ -938,6 +965,186 @@ private fun RecordEditor(
                     if (!missing) onSave(values.toRecord(resource))
                 }
             ) { Text("Salvar") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
+    )
+}
+
+@Composable
+private fun SaleEditor(
+    lookups: Map<String, List<Record>>,
+    onDismiss: () -> Unit,
+    onSave: (Record) -> Unit
+) {
+    val clients = lookups["clientes"].orEmpty()
+    val availableVehicles = lookups["veiculos"].orEmpty()
+        .filter {
+            (it.quantidade_estoque ?: if (it.status == "disponivel") 1 else 0) > 0
+        }
+    var selectedClient by remember { mutableStateOf("") }
+    val selectedVehicles = remember { mutableStateMapOf<Long, Int>() }
+    var saleDate by remember {
+        mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date()))
+    }
+    var paymentMethod by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val selectedItems = selectedVehicles.filterValues { it > 0 }
+    val total = availableVehicles
+        .filter { it.id in selectedItems.keys }
+        .sumOf { vehicle ->
+            (vehicle.preco ?: 0.0) * (vehicle.id?.let(selectedItems::get) ?: 0)
+        }
+    val totalQuantity = selectedItems.values.sum()
+    val canSave = selectedClient.toLongOrNull() != null &&
+        selectedItems.isNotEmpty() &&
+        paymentMethod.isNotBlank()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Registrar venda") },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth().height(480.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("1. Escolha o cliente", style = MaterialTheme.typography.titleMedium)
+                if (clients.isEmpty()) {
+                    Text("Cadastre um cliente antes de registrar a venda.")
+                }
+                ChoiceField(
+                    label = "Cliente",
+                    value = selectedClient,
+                    choices = clients.mapNotNull { client ->
+                        client.id?.let { Choice(it.toString(), client.nome.orEmpty()) }
+                    },
+                    onSelect = { selectedClient = it }
+                )
+
+                Text("2. Selecione os veículos", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "$totalQuantity carro(s) selecionado(s) de ${availableVehicles.sumOf {
+                        it.quantidade_estoque ?: 1
+                    }} disponível(is).",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (availableVehicles.isEmpty()) {
+                    Text("Não há veículos disponíveis para venda.")
+                } else {
+                    availableVehicles.forEach { vehicle ->
+                        val id = vehicle.id ?: return@forEach
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = selectedVehicles[id] != null,
+                                    onCheckedChange = {
+                                        if (it) selectedVehicles[id] = 1 else selectedVehicles.remove(id)
+                                    }
+                                )
+                                Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                                    Text(
+                                        listOfNotNull(vehicle.marca_nome, vehicle.modelo, vehicle.ano?.toString())
+                                            .joinToString(" "),
+                                        style = MaterialTheme.typography.titleSmall
+                                    )
+                                    Text(
+                                        vehicle.preco?.asCurrency() ?: "Preço não informado",
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                if (selectedVehicles[id] != null) {
+                                    val stock = vehicle.quantidade_estoque ?: 1
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                val quantity = (selectedVehicles[id] ?: 1) - 1
+                                                if (quantity == 0) selectedVehicles.remove(id)
+                                                else selectedVehicles[id] = quantity
+                                            },
+                                            enabled = (selectedVehicles[id] ?: 1) > 1
+                                        ) { Text("−") }
+                                        Text(
+                                            "${selectedVehicles[id]}",
+                                            modifier = Modifier.padding(horizontal = 8.dp)
+                                        )
+                                        OutlinedButton(
+                                            onClick = {
+                                                selectedVehicles[id] = (selectedVehicles[id] ?: 0) + 1
+                                            },
+                                            enabled = (selectedVehicles[id] ?: 0) < stock
+                                        ) { Text("+") }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Text("3. Dados da venda", style = MaterialTheme.typography.titleMedium)
+                OutlinedButton(
+                    onClick = {
+                        val calendar = Calendar.getInstance()
+                        DatePickerDialog(
+                            context,
+                            { _, year, month, day ->
+                                saleDate = String.format(
+                                    Locale.US,
+                                    "%04d-%02d-%02d",
+                                    year,
+                                    month + 1,
+                                    day
+                                )
+                            },
+                            calendar.get(Calendar.YEAR),
+                            calendar.get(Calendar.MONTH),
+                            calendar.get(Calendar.DAY_OF_MONTH)
+                        ).show()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    val formattedDate = runCatching {
+                        SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(saleDate)?.let {
+                            SimpleDateFormat("dd/MM/yyyy", Locale.forLanguageTag("pt-BR")).format(it)
+                        }
+                    }.getOrNull()
+                    Text("Data da venda: ${formattedDate ?: saleDate}")
+                }
+                OutlinedTextField(
+                    value = paymentMethod,
+                    onValueChange = { paymentMethod = it },
+                    label = { Text("Forma de pagamento") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    "Total: ${total.asCurrency()}",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(
+                        Record(
+                            cliente_id = selectedClient.toLongOrNull(),
+                            itens = selectedItems.map { (id, quantity) ->
+                                SaleItem(veiculo_id = id, quantidade = quantity)
+                            },
+                            data_venda = saleDate,
+                            forma_pagamento = paymentMethod.trim()
+                        )
+                    )
+                },
+                enabled = canSave
+            ) { Text("Confirmar venda") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
     )
@@ -1048,6 +1255,7 @@ private fun Record.fieldValue(key: String): String? = when (key) {
     "cor" -> cor
     "quilometragem" -> quilometragem?.toString()
     "preco" -> preco?.let(::formatCurrencyForInput)
+    "quantidade_estoque" -> quantidade_estoque?.toString()
     "descricao" -> descricao
     "imagem_url" -> imagem_url
     "cliente_id" -> cliente_id?.toString()
@@ -1077,6 +1285,7 @@ private fun Map<String, String>.toRecord(resource: String): Record {
         "veiculos" -> Record(
             marca_id = long("marca_id"), modelo = text("modelo"), ano = int("ano"),
             cor = text("cor"), quilometragem = int("quilometragem"), preco = decimal("preco"),
+            quantidade_estoque = int("quantidade_estoque"),
             descricao = text("descricao"), imagem_url = text("imagem_url"),
             marca_nome = text("marca_nome")
         )
@@ -1097,6 +1306,8 @@ private fun fieldValidationError(key: String, value: String, required: Boolean):
         "ano" -> if (trimmed.toIntOrNull()?.let { it > 0 } == true) null else "Informe um ano válido."
         "quilometragem" -> if (trimmed.toIntOrNull()?.let { it >= 0 } == true) null
             else "Informe uma quilometragem válida."
+        "quantidade_estoque" -> if (trimmed.toIntOrNull()?.let { it >= 0 } == true) null
+            else "Informe uma quantidade válida."
         "cpf" -> if (trimmed.length == 11) null else "O CPF deve conter 11 números."
         "preco", "valor_venda" -> if (parseCurrency(trimmed)?.let { it >= 0 } == true) null
             else "Informe um valor válido."
@@ -1158,7 +1369,7 @@ private fun Record.subtitleFor(resource: String): String = when (resource) {
     "clientes" -> "${cpf.orEmpty()} · ${email.orEmpty()}"
     "marcas" -> pais_origem.orEmpty()
     "veiculos" -> "${cor.orEmpty()} · ${quilometragem ?: 0} km"
-    "vendas" -> "Vendedor: ${vendedor_nome.orEmpty()} · ${forma_pagamento.orEmpty()}"
+    "vendas" -> "${quantidade ?: 1} unidade(s) · Vendedor: ${vendedor_nome.orEmpty()} · ${forma_pagamento.orEmpty()}"
     else -> ""
 }
 
